@@ -68,7 +68,7 @@ static void put(int key, int value) {
 
 // Lookup key in hash table.  The lock serializes the lookups.
 static int get(int key) {
-  assert(pthread_mutex_lock(&lock) == 0);
+  // assert(pthread_mutex_lock(&lock) == 0);
   int b = key % NBUCKET;
   int i;
   int v = -1;
@@ -79,7 +79,7 @@ static int get(int key) {
     }
   }
 
-  assert(pthread_mutex_unlock(&lock) == 0);
+  // assert(pthread_mutex_unlock(&lock) == 0);
   return v;
 }
 
