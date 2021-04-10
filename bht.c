@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
   assert(pthread_mutex_init(&lock, NULL) == 0);
 
   // Allocate handles for pthread_join() below.
-  tha = malloc(sizeof(pthread_t));
+  tha = malloc(nthread * sizeof(pthread_t));
 
   // Generate some keys to insert and then lookup again
   srandom(0);
@@ -152,6 +152,8 @@ int main(int argc, char *argv[]) {
   for(i = 0; i < nthread; i++) {
     assert(pthread_join(tha[i], &value) == 0);
   }
+
+  free(tha);
   t1 = now();
 
   printf("completion time for get phase = %f\n", t1-t0);
