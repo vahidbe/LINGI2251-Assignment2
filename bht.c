@@ -3,12 +3,13 @@
 #include <stdio.h>
 #include <assert.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <assert.h>
 #include <sys/time.h>
 
 #define NBUCKET 5          // Number of buckets in hash table
 #define NENTRY 1000000     // Number of possible entries per bucket
-#define NKEYS 1000       // Number of keys to insert and look up
+#define NKEYS 10000       // Number of keys to insert and look up
 
 // An entry in the hash table:
 struct entry {
@@ -25,8 +26,17 @@ int keys[NKEYS];
 int nthread = 1;
 volatile int done;
 
-// The lock that serializes get()'s and put()'s.
-pthread_mutex_t lock;
+// The lock that serializes print()'s.
+pthread_mutex_t print_lock;
+
+// The lock that serializes get()'s.
+pthread_mutex_t get_lock;
+
+// Readers count.
+int n_readers = 0;
+
+// The semaphore that serializes put()'s.
+sem_t put_sem;
 
 double now() {
  struct timeval tv;
@@ -49,7 +59,7 @@ static void print(void) {
 
 // Insert (key, value) pair into hash table.
 static void put(int key, int value) {
-  assert(pthread_mutex_lock(&lock) == 0);
+  assert(sem_wait(&put_sem) == 0);
   int b = key % NBUCKET;
   int i;
   // Loop up through the entries in the bucket to find an unused one:
@@ -58,17 +68,22 @@ static void put(int key, int value) {
       table[b][i].key = key;
       table[b][i].value = value;
       table[b][i].inuse = 1;
-      assert(pthread_mutex_unlock(&lock) == 0);
+      assert(sem_post(&put_sem) == 0);
       return;
     }
   }
-  assert(pthread_mutex_unlock(&lock) == 0);
   assert(0);
 }
 
 // Lookup key in hash table.  The lock serializes the lookups.
 static int get(int key) {
-  // assert(pthread_mutex_lock(&lock) == 0);
+  assert(pthread_mutex_lock(&get_lock) == 0);
+  n_readers++;
+  if (n_readers == 1) {
+    sem_wait(&put_sem);
+  }
+  assert(pthread_mutex_unlock(&get_lock) == 0);
+
   int b = key % NBUCKET;
   int i;
   int v = -1;
@@ -79,7 +94,12 @@ static int get(int key) {
     }
   }
 
-  // assert(pthread_mutex_unlock(&lock) == 0);
+  assert(pthread_mutex_lock(&get_lock) == 0);
+  n_readers--;
+  if (n_readers == 0) {
+    sem_post(&put_sem);
+  }
+  assert(pthread_mutex_unlock(&get_lock) == 0);
   return v;
 }
 
@@ -104,9 +124,9 @@ static void *get_thread(void *xa) {
     if (v == -1) k++;
   }
 
-  assert(pthread_mutex_lock(&lock) == 0);
+  assert(pthread_mutex_lock(&print_lock) == 0);
   printf("%ld: %d keys missing\n", n, k);
-  assert(pthread_mutex_unlock(&lock) == 0);
+  assert(pthread_mutex_unlock(&print_lock) == 0);
 }
 
 int main(int argc, char *argv[]) {
@@ -122,7 +142,9 @@ int main(int argc, char *argv[]) {
   nthread = atoi(argv[1]);
 
   // Initialize lock
-  assert(pthread_mutex_init(&lock, NULL) == 0);
+  assert(pthread_mutex_init(&print_lock, NULL) == 0);
+  assert(pthread_mutex_init(&get_lock, NULL) == 0);
+  assert(sem_init(&put_sem, 0, 1) == 0);
 
   // Allocate handles for pthread_join() below.
   tha = malloc(nthread * sizeof(pthread_t));
