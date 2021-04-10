@@ -1,0 +1,1 @@
+valgrind --tool=memcheck ./bht $1
