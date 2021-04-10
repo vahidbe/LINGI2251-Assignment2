@@ -8,7 +8,7 @@
 
 #define NBUCKET 5          // Number of buckets in hash table
 #define NENTRY 1000000     // Number of possible entries per bucket
-#define NKEYS 100000       // Number of keys to insert and look up
+#define NKEYS 1000       // Number of keys to insert and look up
 
 // An entry in the hash table:
 struct entry {
@@ -25,7 +25,7 @@ int keys[NKEYS];
 int nthread = 1;
 volatile int done;
 
-// The lock that serializes get()'s.
+// The lock that serializes get()'s and put()'s.
 pthread_mutex_t lock;
 
 double now() {
@@ -49,6 +49,7 @@ static void print(void) {
 
 // Insert (key, value) pair into hash table.
 static void put(int key, int value) {
+  assert(pthread_mutex_lock(&lock) == 0);
   int b = key % NBUCKET;
   int i;
   // Loop up through the entries in the bucket to find an unused one:
@@ -57,9 +58,11 @@ static void put(int key, int value) {
       table[b][i].key = key;
       table[b][i].value = value;
       table[b][i].inuse = 1;
+      assert(pthread_mutex_unlock(&lock) == 0);
       return;
     }
   }
+  assert(pthread_mutex_unlock(&lock) == 0);
   assert(0);
 }
 
@@ -100,7 +103,10 @@ static void *get_thread(void *xa) {
     int v = get(keys[b*n + i]);
     if (v == -1) k++;
   }
+
+  assert(pthread_mutex_lock(&lock) == 0);
   printf("%ld: %d keys missing\n", n, k);
+  assert(pthread_mutex_unlock(&lock) == 0);
 }
 
 int main(int argc, char *argv[]) {
